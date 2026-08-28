@@ -158,18 +158,24 @@ pip install -e .
 
 To upgrade after pulling changes: `uv tool install --editable . --force` (or `pip install -e .` again).
 
-### Optional: install the Claude Code skill globally
+### Optional: install the Claude Code skills globally
 
-If you use [Claude Code](https://claude.com/claude-code), this repo ships a `queue-song`
-skill that lets Claude queue tracks on your behalf via this CLI. Once `spotify` is on
-your PATH (see above), install the skill for every project on this machine with:
+If you use [Claude Code](https://claude.com/claude-code), this repo ships two skills that
+let Claude drive this CLI on your behalf:
+
+- **`queue-song`** — queue a track for playback (needs Premium and an active device).
+- **`make-playlist`** — create a playlist and fill it with tracks, choosing the songs
+  itself from a description like "20 songs like Alice in Chains".
+
+Once `spotify` is on your PATH (see above), install them for every project on this
+machine with:
 
 ```bash
 spotify install-skill
 ```
 
-This copies the skill to `~/.claude/skills/queue-song/`. Pass `--force` to overwrite an
-existing copy that's out of date.
+This copies each skill to `~/.claude/skills/<name>/`. Pass `--force` to overwrite
+existing copies that are out of date.
 
 ## Configure
 

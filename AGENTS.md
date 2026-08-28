@@ -74,7 +74,7 @@ spotify queue "<track>" [--artist "..."] [--track-uri URI] [--device-id ID]
 spotify devices
 spotify now                           # what's currently playing/paused
 
-spotify install-skill [--force]       # install the queue-song Claude Code skill to ~/.claude/skills
+spotify install-skill [--force]       # install the bundled Claude Code skills to ~/.claude/skills
 ```
 
 Always quote track, artist, album, and playlist names — they routinely contain spaces
@@ -182,8 +182,12 @@ precise `--artist` or `--track-uri`) if you want them added too.
 
 - All commands are non-interactive and never read from stdin, so they're safe to call from
   a script or subprocess without a TTY.
-- `playlist create` defaults to a **public** playlist; pass `--private` if that's not
-  wanted.
+- **Playlist visibility can't be set through the API.** `playlist create` defaults to
+  public, and Spotify does not reliably honor `--private` on creation — the flag is
+  passed through, but a new playlist may end up public anyway, and the `public` field in
+  the response isn't a trustworthy readback. Don't report a created playlist's visibility
+  as fact; if the user wants it private, they have to change it by hand in the Spotify
+  app.
 - Names are matched case-insensitively; an exact (trimmed, case-insensitive) name match is
   preferred over a substring match, and either one is only auto-selected when it's unique —
   otherwise you get exit code `3` with candidates.
