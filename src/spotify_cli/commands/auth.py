@@ -16,7 +16,10 @@ auth_app = typer.Typer(help="Authenticate this CLI with your Spotify account.")
 def auth_main(ctx: typer.Context) -> None:
     """Running 'spotify auth' with no subcommand starts the login flow."""
     if ctx.invoked_subcommand is None:
-        _login(ctx)
+        # Keyword, not positional: Typer hands a group callback a plain click Context,
+        # which cli_command's positional isinstance(typer.Context) scan never matches —
+        # so a positional call silently loses --json mode.
+        _login(ctx=ctx)
 
 
 @cli_command
