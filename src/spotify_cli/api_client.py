@@ -86,7 +86,13 @@ class SpotifyClient:
         self._raise_for_status(resp)
         if resp.status_code == 204 or not resp.content:
             return None
-        return resp.json()
+        try:
+            return resp.json()
+        except ValueError:
+            # Some endpoints (e.g. POST /me/player/queue) return a 200 with a
+            # non-JSON body (a bare opaque token) instead of 204. Treat it the
+            # same as an empty body rather than crashing the caller.
+            return None
 
     async def get(self, url: str, **kwargs) -> Any:
         return await self.request_json("GET", url, **kwargs)
