@@ -65,7 +65,7 @@ class Playlist:
             owner=owner_obj.get("display_name") or owner_obj.get("id", "?"),
             public=obj.get("public"),
             collaborative=obj.get("collaborative", False),
-            total_tracks=(obj.get("tracks") or {}).get("total", 0),
+            total_tracks=(obj.get("items") or obj.get("tracks") or {}).get("total", 0),
             snapshot_id=obj.get("snapshot_id", ""),
         )
 

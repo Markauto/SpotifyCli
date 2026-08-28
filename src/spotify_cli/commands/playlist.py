@@ -30,21 +30,27 @@ async def _resolve_playlist_arg(
 
 
 async def _iter_playlist_track_uris(client: SpotifyClient, playlist_id: str):
-    fields = "items(track(uri)),next"
+    fields = "items(item(uri)),next"
     async for item in client.paginate(f"/playlists/{playlist_id}/items", params={"fields": fields}):
-        track = item.get("track")
+        track = item.get("item")
         if track and track.get("uri"):
             yield track["uri"]
 
 
 async def _get_playlist_tracks(client: SpotifyClient, playlist_id: str) -> list[Track]:
-    fields = "items(track(id,uri,name,duration_ms,artists(name),album(name))),next"
+    fields = "items(item(id,uri,name,duration_ms,artists(name),album(name))),next"
     tracks: list[Track] = []
     async for item in client.paginate(f"/playlists/{playlist_id}/items", params={"fields": fields}):
-        t = item.get("track")
+        t = item.get("item")
         if t and t.get("id"):
             tracks.append(Track.from_api(t))
     return tracks
+
+
+async def _remove_all_occurrences(client: SpotifyClient, playlist_id: str, uri: str) -> None:
+    """Removes every occurrence of `uri`. Deliberately sends no snapshot_id — see the note
+    in api_client's module docstring for why a stale one silently removes the wrong items."""
+    await client.delete(f"/playlists/{playlist_id}/items", json={"items": [{"uri": uri}]})
 
 
 async def _get_album_tracks(client: SpotifyClient, album_id: str) -> list[Track]:
@@ -211,10 +217,7 @@ async def playlist_remove(
                 console.print(f'[dry-run] Would remove {occurrences} occurrence(s) of {resolved_track.label} from "{target_playlist.name}".')
             return
 
-        await client.delete(
-            f"/playlists/{target_playlist.id}/items",
-            json={"items": [{"uri": resolved_track.uri}], "snapshot_id": target_playlist.snapshot_id},
-        )
+        await _remove_all_occurrences(client, target_playlist.id, resolved_track.uri)
 
     result = {"removed": True, "occurrences": occurrences, "track": resolved_track.to_dict(), "playlist": target_playlist.to_dict()}
     if json_mode:
@@ -442,12 +445,8 @@ async def playlist_dedupe(
                 )
             return
 
-        snapshot_id = target.snapshot_id
         for uri in plan["duplicate_uris"]:
-            resp = await client.delete(
-                f"/playlists/{target.id}/items", json={"items": [{"uri": uri}], "snapshot_id": snapshot_id}
-            )
-            snapshot_id = (resp or {}).get("snapshot_id", snapshot_id)
+            await _remove_all_occurrences(client, target.id, uri)
         for i in range(0, len(plan["duplicate_uris"]), 100):
             chunk = plan["duplicate_uris"][i : i + 100]
             await client.post(f"/playlists/{target.id}/items", json={"uris": chunk})

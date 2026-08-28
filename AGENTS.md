@@ -41,6 +41,11 @@ spotify --json playlist show "Driving"
 }
 ```
 
+One caveat on that shape: **don't use `snapshot_id` for concurrency control.** Spotify's read
+endpoints serve a stale value — after a playlist is mutated it keeps reporting the
+pre-mutation `snapshot_id` (`total_tracks` does update). It's passed through here because
+it's part of the API's response, not because it's a reliable version marker.
+
 ## Command reference
 
 ```

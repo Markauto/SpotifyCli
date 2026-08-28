@@ -3,10 +3,21 @@
 
 Endpoint choices here reflect the *current* (2025+) Spotify Web API surface, not older
 tutorials you may see elsewhere:
-  - Playlist items live at /playlists/{id}/items, not the deprecated .../tracks.
-  - Removing playlist items takes {"items": [{"uri": ...}], "snapshot_id": ...}, not
-    the old {"tracks": [...]} body, and there is no per-position removal any more —
-    removal is purely by URI (see playlist.dedupe_plan for how this CLI works around that).
+  - Playlist items live at /playlists/{id}/items, not the deprecated .../tracks. The
+    response objects were renamed to match: each page entry nests the track under "item"
+    (not "track"), a playlist object carries its count at items.total (not tracks.total),
+    and `fields` selectors must be written items(item(...)) accordingly. Reading the old
+    keys silently yields empty results rather than an error, which in particular makes the
+    duplicate check in `playlist add`/`import` pass everything through.
+  - Removing playlist items takes {"items": [{"uri": ...}]}, not the old
+    {"tracks": [...]} body, and there is no per-position removal any more — removal is
+    purely by URI (see playlist.dedupe_plan for how this CLI works around that).
+  - Do NOT send a snapshot_id with a removal. The read endpoints serve a stale one: after
+    a playlist is mutated, GET /playlists/{id} and GET /me/playlists still report the
+    pre-mutation snapshot_id (their item counts do update). Removing against that older
+    version is accepted with a 200 and silently deletes the wrong occurrences, or none.
+    Omitting the field removes against the playlist's current state, which is what every
+    caller here wants.
   - Saved-track ("library") reads still use GET /me/tracks, which remains current.
 """
 

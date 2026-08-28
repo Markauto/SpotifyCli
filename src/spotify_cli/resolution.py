@@ -104,7 +104,7 @@ async def resolve_playlist_arg(
     if explicit_id:
         data = await client.get(
             f"/playlists/{explicit_id}",
-            params={"fields": "id,uri,name,owner,public,collaborative,snapshot_id,tracks(total)"},
+            params={"fields": "id,uri,name,owner,public,collaborative,snapshot_id,items(total)"},
         )
         return Playlist.from_api(data)
 
