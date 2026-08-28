@@ -7,7 +7,7 @@ import typer
 from .commands.auth import auth_app
 from .commands.library import library_app
 from .commands.playlist import playlist_app, playlist_list
-from .commands.queue import list_devices, queue_track
+from .commands.queue import list_devices, now_playing, queue_track
 from .commands.search import search_app
 from .output import AppContext
 
@@ -42,6 +42,7 @@ app.add_typer(library_app, name="liked")
 app.command("playlists", help="Alias for 'playlist list'.")(playlist_list)
 app.command("queue", help="Add a track to the playback queue.")(queue_track)
 app.command("devices", help="List available playback devices.")(list_devices)
+app.command("now", help="Show what's currently playing.")(now_playing)
 
 
 if __name__ == "__main__":

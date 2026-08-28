@@ -3,8 +3,9 @@ name: queue-song
 description: >
   Add a song to the user's Spotify playback queue via the spotify-cli. Trigger:
   "queue this song", "add X to the queue", "play X next", "queue up a track",
-  or any request to queue a specific or freely-chosen song. Requires Spotify
-  Premium and an actively playing device.
+  "queue something like what's playing", or any request to queue a specific,
+  freely-chosen, or currently-playing-based song. Requires Spotify Premium and
+  an actively playing device.
 ---
 
 # Queue a Song
@@ -17,6 +18,12 @@ step here is unclear.
 ## Steps
 
 1. If the user didn't name a specific song, pick one yourself — no need to ask.
+   - If the request is based on what's currently playing (e.g. "queue something
+     like this", "add another song by whoever this is"), run `spotify --json now`
+     first to find out what's playing, then pick a song using that track/artist
+     as the basis. If `playing` is `false` (nothing playing) or `type` isn't
+     `"track"` (an ad or podcast episode), tell the user there's no current
+     track to go on and ask what they'd like queued instead.
 2. Queue it directly; `spotify queue` resolves the track internally, no separate
    search step needed for an unambiguous title:
    ```bash

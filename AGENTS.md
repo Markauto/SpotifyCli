@@ -72,6 +72,7 @@ spotify library list [--limit N]      # = liked list
 
 spotify queue "<track>" [--artist "..."] [--track-uri URI] [--device-id ID]
 spotify devices
+spotify now                           # what's currently playing/paused
 ```
 
 Always quote track, artist, album, and playlist names — they routinely contain spaces

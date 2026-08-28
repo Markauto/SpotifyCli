@@ -18,7 +18,7 @@ import typer
 from ..api_client import build_client
 from ..cli_support import cli_command
 from ..errors import ApiError
-from ..models import Device
+from ..models import Device, Track
 from ..output import console, emit_json
 from ..resolution import resolve_track
 
@@ -65,6 +65,58 @@ async def queue_track(
         emit_json(result)
     else:
         console.print(f"Queued {resolved.label}.")
+
+
+def _format_ms(ms: int | None) -> str:
+    if ms is None:
+        return "?"
+    total_seconds = ms // 1000
+    return f"{total_seconds // 60}:{total_seconds % 60:02d}"
+
+
+@cli_command
+async def now_playing(ctx: typer.Context) -> None:
+    """Shows what's currently playing (or paused) on the account's active device."""
+    json_mode = ctx.obj.json_mode
+    async with build_client() as client:
+        data = await client.get("/me/player/currently-playing")
+
+    if not data or not data.get("item"):
+        if json_mode:
+            emit_json({"playing": False})
+        else:
+            console.print("Nothing is currently playing.")
+        return
+
+    content_type = data.get("currently_playing_type", "track")
+    if content_type != "track":
+        if json_mode:
+            emit_json({"playing": True, "type": content_type, "track": None})
+        else:
+            console.print(f"Playing a {content_type}, not a track.")
+        return
+
+    track = Track.from_api(data["item"])
+    is_playing = data.get("is_playing", False)
+    progress_ms = data.get("progress_ms")
+    device = (data.get("device") or {}).get("name")
+
+    if json_mode:
+        emit_json(
+            {
+                "playing": True,
+                "is_playing": is_playing,
+                "progress_ms": progress_ms,
+                "duration_ms": track.duration_ms,
+                "device": device,
+                "track": track.to_dict(),
+            }
+        )
+    else:
+        state = "Playing" if is_playing else "Paused"
+        progress = f"{_format_ms(progress_ms)}/{_format_ms(track.duration_ms)}"
+        suffix = f" on {device}" if device else ""
+        console.print(f"{state}: {track.label}  [{progress}]{suffix}")
 
 
 @cli_command
