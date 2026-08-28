@@ -211,7 +211,10 @@ async def playlist_remove(
                 console.print(f'[dry-run] Would remove {occurrences} occurrence(s) of {resolved_track.label} from "{target_playlist.name}".')
             return
 
-        await client.delete(f"/playlists/{target_playlist.id}/items", json={"items": [{"uri": resolved_track.uri}]})
+        await client.delete(
+            f"/playlists/{target_playlist.id}/items",
+            json={"items": [{"uri": resolved_track.uri}], "snapshot_id": target_playlist.snapshot_id},
+        )
 
     result = {"removed": True, "occurrences": occurrences, "track": resolved_track.to_dict(), "playlist": target_playlist.to_dict()}
     if json_mode:
@@ -439,8 +442,12 @@ async def playlist_dedupe(
                 )
             return
 
+        snapshot_id = target.snapshot_id
         for uri in plan["duplicate_uris"]:
-            await client.delete(f"/playlists/{target.id}/items", json={"items": [{"uri": uri}]})
+            resp = await client.delete(
+                f"/playlists/{target.id}/items", json={"items": [{"uri": uri}], "snapshot_id": snapshot_id}
+            )
+            snapshot_id = (resp or {}).get("snapshot_id", snapshot_id)
         for i in range(0, len(plan["duplicate_uris"]), 100):
             chunk = plan["duplicate_uris"][i : i + 100]
             await client.post(f"/playlists/{target.id}/items", json={"uris": chunk})

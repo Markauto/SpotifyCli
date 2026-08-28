@@ -7,17 +7,13 @@ the optional interactive disambiguation prompt.
 from __future__ import annotations
 
 import sys
-from difflib import SequenceMatcher
 
 from .api_client import SpotifyClient
 from .errors import AmbiguousMatchError, ConfigError, NotFoundError, SpotifyCliError
+from .matching import _similarity as _name_similarity
 from .matching import pick_best_track, resolve_playlist
 from .models import Playlist, Track
 from .output import prompt_pick_candidate
-
-
-def _name_similarity(a: str, b: str) -> float:
-    return SequenceMatcher(None, a.lower().strip(), b.lower().strip()).ratio()
 
 
 async def resolve_track(

@@ -100,8 +100,13 @@ def run_login_flow(settings: Settings, timeout: float = 300.0) -> dict:
             f"Redirect URI '{settings.redirect_uri}' is not a loopback address. "
             "Spotify requires http://127.0.0.1:<port>/callback for local apps."
         )
+    if redirect.port is None:
+        raise AuthError(
+            f"Redirect URI '{settings.redirect_uri}' has no port. "
+            "Spotify requires http://127.0.0.1:<port>/callback for local apps."
+        )
 
-    server = HTTPServer((redirect.hostname, redirect.port or 80), _CallbackHandler)
+    server = HTTPServer((redirect.hostname, redirect.port), _CallbackHandler)
     server.redirect_uri = settings.redirect_uri
     server.auth_result = None
     server.timeout = timeout
