@@ -1,17 +1,17 @@
 from __future__ import annotations
 
-from difflib import SequenceMatcher
-
 import typer
 
 from ..api_client import SpotifyClient, build_client
 from ..cli_support import cli_command
-from ..errors import AmbiguousMatchError, ConfigError, NotFoundError
-from ..matching import dedupe_plan, pick_best_track, resolve_playlist
+from ..errors import AmbiguousMatchError, NotFoundError
+from ..matching import dedupe_plan
 from ..models import Playlist, Track
 from ..output import console, emit_json, render_playlists_table, render_tracks_table
+from ..resolution import resolve_album, resolve_playlist_arg, resolve_track
+from ..track_list import load_track_list_file
 
-playlist_app = typer.Typer(help="Manage playlists: list, show, create, add/remove tracks, add albums, dedupe.")
+playlist_app = typer.Typer(help="Manage playlists: list, show, create, add/remove tracks, add albums, import, dedupe.")
 
 
 # --- internal helpers (shared by several commands below) -----------------------------
@@ -23,15 +23,10 @@ async def _get_all_playlists(client: SpotifyClient) -> list[Playlist]:
     return playlists
 
 
-async def _resolve_playlist_arg(client: SpotifyClient, name: str, explicit_id: str | None) -> Playlist:
-    if explicit_id:
-        data = await client.get(
-            f"/playlists/{explicit_id}",
-            params={"fields": "id,uri,name,owner,public,collaborative,snapshot_id,tracks(total)"},
-        )
-        return Playlist.from_api(data)
-    playlists = await _get_all_playlists(client)
-    return resolve_playlist(playlists, name)
+async def _resolve_playlist_arg(
+    client: SpotifyClient, name: str, explicit_id: str | None, *, interactive: bool = False
+) -> Playlist:
+    return await resolve_playlist_arg(client, _get_all_playlists, name, explicit_id, interactive=interactive)
 
 
 async def _iter_playlist_track_uris(client: SpotifyClient, playlist_id: str):
@@ -50,55 +45,6 @@ async def _get_playlist_tracks(client: SpotifyClient, playlist_id: str) -> list[
         if t and t.get("id"):
             tracks.append(Track.from_api(t))
     return tracks
-
-
-async def _resolve_track(
-    client: SpotifyClient, query: str | None, artist: str | None, track_uri: str | None
-) -> Track:
-    if track_uri:
-        track_id = track_uri.rsplit(":", 1)[-1]
-        data = await client.get(f"/tracks/{track_id}")
-        return Track.from_api(data)
-    if not query:
-        raise ConfigError("Provide a track name or --track-uri.")
-    q = f'track:"{query}" artist:"{artist}"' if artist else query
-    data = await client.get("/search", params={"q": q, "type": "track", "limit": 20})
-    candidates = [Track.from_api(t) for t in (data.get("tracks") or {}).get("items", [])]
-    return pick_best_track(candidates, query, artist)
-
-
-def _name_similarity(a: str, b: str) -> float:
-    return SequenceMatcher(None, a.lower().strip(), b.lower().strip()).ratio()
-
-
-async def _resolve_album(
-    client: SpotifyClient, query: str | None, artist: str | None, album_uri: str | None
-) -> dict:
-    if album_uri:
-        album_id = album_uri.rsplit(":", 1)[-1]
-        return await client.get(f"/albums/{album_id}")
-    if not query:
-        raise ConfigError("Provide an album name or --album-uri.")
-    q = f'album:"{query}"' + (f' artist:"{artist}"' if artist else "")
-    data = await client.get("/search", params={"q": q, "type": "album", "limit": 10})
-    items = (data.get("albums") or {}).get("items", [])
-    if not items:
-        suffix = f" by '{artist}'" if artist else ""
-        raise NotFoundError(f"No album found matching '{query}'{suffix}.")
-
-    scored = sorted(items, key=lambda a: _name_similarity(a["name"], query), reverse=True)
-    best_score = _name_similarity(scored[0]["name"], query)
-    second_score = _name_similarity(scored[1]["name"], query) if len(scored) > 1 else 0.0
-    if best_score >= 0.92 and best_score - second_score >= 0.08:
-        return await client.get(f"/albums/{scored[0]['id']}")
-
-    raise AmbiguousMatchError(
-        f"Multiple albums match '{query}'. Pass --artist to narrow it down, or --album-uri with an exact Spotify album URI.",
-        candidates=[
-            {"name": a["name"], "artists": [ar["name"] for ar in a.get("artists", [])], "uri": a["uri"], "id": a["id"]}
-            for a in scored[:8]
-        ],
-    )
 
 
 async def _get_album_tracks(client: SpotifyClient, album_id: str) -> list[Track]:
@@ -184,13 +130,17 @@ async def playlist_add(
     track_uri: str | None = typer.Option(None, "--track-uri", help="Exact Spotify track URI/ID, bypassing search."),
     playlist_id: str | None = typer.Option(None, "--playlist-id", help="Exact Spotify playlist ID, bypassing name lookup."),
     allow_duplicate: bool = typer.Option(False, "--allow-duplicate", help="Add even if the track is already in the playlist."),
+    interactive: bool = typer.Option(
+        False, "--interactive", "-i", help="If the track or playlist name is ambiguous, prompt to choose instead of failing."
+    ),
     dry_run: bool = typer.Option(False, "--dry-run", help="Show what would happen without making changes."),
 ) -> None:
     """Adds one track to a playlist, skipping it if already present (unless --allow-duplicate)."""
     json_mode = ctx.obj.json_mode
+    effective_interactive = interactive and not json_mode
     async with build_client() as client:
-        resolved_track = await _resolve_track(client, track, artist, track_uri)
-        target_playlist = await _resolve_playlist_arg(client, playlist, playlist_id)
+        resolved_track = await resolve_track(client, track, artist, track_uri, interactive=effective_interactive)
+        target_playlist = await _resolve_playlist_arg(client, playlist, playlist_id, interactive=effective_interactive)
         existing_uris = {u async for u in _iter_playlist_track_uris(client, target_playlist.id)}
         already_present = resolved_track.uri in existing_uris
 
@@ -234,7 +184,7 @@ async def playlist_remove(
     matched track URI, so if a track appears multiple times, all copies are removed."""
     json_mode = ctx.obj.json_mode
     async with build_client() as client:
-        resolved_track = await _resolve_track(client, track, artist, track_uri)
+        resolved_track = await resolve_track(client, track, artist, track_uri)
         target_playlist = await _resolve_playlist_arg(client, playlist, playlist_id)
         existing_uris = [u async for u in _iter_playlist_track_uris(client, target_playlist.id)]
         occurrences = existing_uris.count(resolved_track.uri)
@@ -280,14 +230,18 @@ async def playlist_add_album(
     album_uri: str | None = typer.Option(None, "--album-uri", help="Exact Spotify album URI/ID, bypassing search."),
     playlist_id: str | None = typer.Option(None, "--playlist-id", help="Exact Spotify playlist ID, bypassing name lookup."),
     allow_duplicate: bool = typer.Option(False, "--allow-duplicate", help="Add tracks even if already present."),
+    interactive: bool = typer.Option(
+        False, "--interactive", "-i", help="If the album or playlist name is ambiguous, prompt to choose instead of failing."
+    ),
     dry_run: bool = typer.Option(False, "--dry-run", help="Show what would happen without making changes."),
 ) -> None:
     """Adds every track of an album to a playlist, skipping tracks already present (unless --allow-duplicate)."""
     json_mode = ctx.obj.json_mode
+    effective_interactive = interactive and not json_mode
     async with build_client() as client:
-        album_obj = await _resolve_album(client, album, artist, album_uri)
+        album_obj = await resolve_album(client, album, artist, album_uri, interactive=effective_interactive)
         album_tracks = await _get_album_tracks(client, album_obj["id"])
-        target_playlist = await _resolve_playlist_arg(client, playlist, playlist_id)
+        target_playlist = await _resolve_playlist_arg(client, playlist, playlist_id, interactive=effective_interactive)
         existing_uris = {u async for u in _iter_playlist_track_uris(client, target_playlist.id)}
 
         to_add = [t for t in album_tracks if allow_duplicate or t.uri not in existing_uris]
@@ -334,6 +288,115 @@ async def playlist_add_album(
             f'Added {len(to_add)} track(s) from "{album_summary["name"]}" to "{target_playlist.name}" '
             f'({len(skipped)} already present, skipped).'
         )
+
+
+@playlist_app.command("import")
+@cli_command
+async def playlist_import(
+    ctx: typer.Context,
+    playlist: str = typer.Argument(..., help='Destination playlist name, e.g. "Driving".'),
+    file: str = typer.Argument(..., help='Path to a track list file (.txt or .json), or "-" to read from stdin.'),
+    playlist_id: str | None = typer.Option(None, "--playlist-id", help="Exact Spotify playlist ID, bypassing name lookup."),
+    allow_duplicate: bool = typer.Option(False, "--allow-duplicate", help="Add tracks even if already present."),
+    interactive: bool = typer.Option(
+        False, "--interactive", "-i", help="If a track or the playlist name is ambiguous, prompt to choose instead of skipping it."
+    ),
+    stop_on_error: bool = typer.Option(
+        False, "--stop-on-error", help="Abort the whole import on the first track that can't be resolved (default: skip it and continue)."
+    ),
+    dry_run: bool = typer.Option(False, "--dry-run", help="Show what would happen without making changes."),
+) -> None:
+    """Bulk-adds every track listed in a file to a playlist, skipping tracks already present
+    (unless --allow-duplicate) and skipping tracks that can't be confidently matched (unless
+    --stop-on-error, or --interactive to be asked instead).
+
+    File formats:
+
+      Plain text — one track per line, "Track Title" or "Track Title | Artist". Lines
+      starting with "#" and blank lines are ignored. A line that's a Spotify track URI or
+      open.spotify.com track URL is used directly, bypassing search.
+
+      JSON — a top-level array. Each item is either a plain string (track title) or an
+      object like {"track": "...", "artist": "..."} or {"uri": "spotify:track:..."}.
+
+    Detected automatically: a file named *.json is parsed as JSON; anything else (including
+    stdin via "-") is parsed as JSON only if its content starts with '[', otherwise as
+    plain text.
+    """
+    json_mode = ctx.obj.json_mode
+    effective_interactive = interactive and not json_mode
+    entries = load_track_list_file(file)
+
+    results: list[dict] = []
+    to_add_uris: list[str] = []
+
+    async with build_client() as client:
+        target_playlist = await _resolve_playlist_arg(client, playlist, playlist_id, interactive=effective_interactive)
+        existing_uris = {u async for u in _iter_playlist_track_uris(client, target_playlist.id)}
+
+        for entry in entries:
+            try:
+                track = await resolve_track(
+                    client, entry.query, entry.artist, entry.uri, interactive=effective_interactive
+                )
+            except AmbiguousMatchError as exc:
+                results.append({"input": entry.raw, "status": "ambiguous", "message": exc.message, "candidates": exc.candidates})
+                if not json_mode:
+                    console.print(f"[yellow]Ambiguous, skipped:[/yellow] {entry.raw}")
+                if stop_on_error:
+                    break
+                continue
+            except NotFoundError as exc:
+                results.append({"input": entry.raw, "status": "not_found", "message": exc.message})
+                if not json_mode:
+                    console.print(f"[yellow]Not found, skipped:[/yellow] {entry.raw}")
+                if stop_on_error:
+                    break
+                continue
+
+            if track.uri in existing_uris and not allow_duplicate:
+                results.append({"input": entry.raw, "status": "duplicate", "track": track.to_dict()})
+                if not json_mode:
+                    console.print(f"Skipped (duplicate): {track.label}")
+                continue
+
+            if dry_run:
+                results.append({"input": entry.raw, "status": "would_add", "track": track.to_dict()})
+                if not json_mode:
+                    console.print(f"[dry-run] Would add: {track.label}")
+                existing_uris.add(track.uri)
+                continue
+
+            to_add_uris.append(track.uri)
+            existing_uris.add(track.uri)
+            results.append({"input": entry.raw, "status": "added", "track": track.to_dict()})
+            if not json_mode:
+                console.print(f"Added: {track.label}")
+
+        for i in range(0, len(to_add_uris), 100):
+            chunk = to_add_uris[i : i + 100]
+            if chunk:
+                await client.post(f"/playlists/{target_playlist.id}/items", json={"uris": chunk})
+
+    summary = {
+        "total_input_lines": len(entries),
+        "added": sum(1 for r in results if r["status"] == "added"),
+        "would_add": sum(1 for r in results if r["status"] == "would_add"),
+        "duplicates_skipped": sum(1 for r in results if r["status"] == "duplicate"),
+        "not_found": sum(1 for r in results if r["status"] == "not_found"),
+        "ambiguous": sum(1 for r in results if r["status"] == "ambiguous"),
+    }
+
+    if json_mode:
+        emit_json({"playlist": target_playlist.to_dict(), "results": results, "summary": summary})
+    else:
+        console.print(
+            f'\nImport summary for "{target_playlist.name}": {summary["added"]} added, '
+            f'{summary["would_add"]} would-add (dry-run), {summary["duplicates_skipped"]} duplicate(s) skipped, '
+            f'{summary["not_found"]} not found, {summary["ambiguous"]} ambiguous.'
+        )
+        if summary["not_found"] or summary["ambiguous"]:
+            console.print("Re-run with --interactive to resolve ambiguous/not-found tracks by hand, or fix the file and re-run (already-added tracks will be skipped as duplicates).")
 
 
 @playlist_app.command("dedupe")

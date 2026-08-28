@@ -16,7 +16,7 @@ async def search_track(
     ctx: typer.Context,
     query: str = typer.Argument(..., help="Track title to search for."),
     artist: str | None = typer.Option(None, "--artist", help="Filter/boost results by artist name."),
-    limit: int = typer.Option(10, "--limit", min=1, max=50, help="Max results to return."),
+    limit: int = typer.Option(10, "--limit", min=1, max=10, help="Max results to return (Spotify caps this at 10)."),
 ) -> None:
     """Searches for tracks. Search does not require any OAuth scope beyond a valid token."""
     json_mode = ctx.obj.json_mode
@@ -41,7 +41,7 @@ async def search_track(
 async def search_artist(
     ctx: typer.Context,
     query: str = typer.Argument(..., help="Artist name to search for."),
-    limit: int = typer.Option(10, "--limit", min=1, max=50, help="Max results to return."),
+    limit: int = typer.Option(10, "--limit", min=1, max=10, help="Max results to return (Spotify caps this at 10)."),
 ) -> None:
     """Searches for artists — useful for confirming exact spelling/naming before a track search."""
     json_mode = ctx.obj.json_mode

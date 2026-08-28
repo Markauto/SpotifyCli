@@ -49,6 +49,28 @@ def print_cli_error(exc, json_mode: bool) -> None:
         err_console.print(table)
 
 
+def prompt_pick_candidate(candidates: list[dict], noun: str = "item") -> int | None:
+    """Prints a numbered table of candidates and prompts the user to pick one.
+    Returns the zero-based index chosen, or None if the user cancels (enters 0).
+    Callers are responsible for only invoking this in an interactive, non-JSON context.
+    """
+    from rich.prompt import Prompt
+
+    table = Table(show_header=True, header_style="bold")
+    table.add_column("#", justify="right")
+    keys = [k for k in candidates[0].keys() if k not in ("uri", "id", "score")]
+    for k in keys:
+        table.add_column(k)
+    for i, c in enumerate(candidates, start=1):
+        table.add_row(str(i), *(str(c.get(k, "")) for k in keys))
+    console.print(table)
+
+    choices = [str(i) for i in range(0, len(candidates) + 1)]
+    raw = Prompt.ask(f"Which {noun}? (1-{len(candidates)}, 0 to cancel)", choices=choices, default="0")
+    idx = int(raw)
+    return None if idx == 0 else idx - 1
+
+
 def render_tracks_table(tracks: list, title: str = "Tracks") -> None:
     table = Table(title=title, show_header=True, header_style="bold")
     table.add_column("#", justify="right")

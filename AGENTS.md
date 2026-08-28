@@ -55,9 +55,10 @@ spotify playlists                     # = playlist list
 spotify playlist list
 spotify playlist show "<name>" [--playlist-id ID]
 spotify playlist create "<name>" [--public/--private] [--description "..."]
-spotify playlist add "<track>" "<playlist>" [--artist "..."] [--track-uri URI] [--playlist-id ID] [--allow-duplicate] [--dry-run]
+spotify playlist add "<track>" "<playlist>" [--artist "..."] [--track-uri URI] [--playlist-id ID] [--allow-duplicate] [--interactive] [--dry-run]
 spotify playlist remove "<track>" "<playlist>" [--artist "..."] [--track-uri URI] [--playlist-id ID] [--dry-run]
-spotify playlist add-album "<album>" "<playlist>" [--artist "..."] [--album-uri URI] [--playlist-id ID] [--allow-duplicate] [--dry-run]
+spotify playlist add-album "<album>" "<playlist>" [--artist "..."] [--album-uri URI] [--playlist-id ID] [--allow-duplicate] [--interactive] [--dry-run]
+spotify playlist import "<playlist>" <file> [--playlist-id ID] [--allow-duplicate] [--interactive] [--stop-on-error] [--dry-run]
 spotify playlist dedupe "<playlist>" [--playlist-id ID] [--dry-run]
 
 spotify library add "<track>"         # = liked add
@@ -104,12 +105,49 @@ to my Grunge playlist, avoiding duplicates"*:
 6. Summarize what was actually added/skipped back to the user — don't just report success;
    the per-track JSON tells you exactly what happened to each one.
 
+### Shortcut for a known list: `playlist import`
+
+Once you've decided on a fixed list of specific tracks (step 1 above, or any time the user
+hands you an explicit list), you don't have to loop `playlist add` yourself — write the list
+to a file (or pipe JSON via stdin) and let `playlist import` do the search-add-skip loop in
+one call. This is preferable when the list is more than a couple of tracks: fewer commands,
+and you get one JSON summary instead of parsing N separate results.
+
+```bash
+cat > /tmp/tracks.json <<'EOF'
+[
+  {"track": "Rooster", "artist": "Alice in Chains"},
+  {"track": "Black Hole Sun", "artist": "Soundgarden"}
+]
+EOF
+spotify --json playlist import "Grunge" /tmp/tracks.json
+```
+
+Or pipe it directly without a temp file:
+
+```bash
+echo '["Rooster", {"track": "Would?", "artist": "Alice in Chains"}]' | spotify --json playlist import "Grunge" -
+```
+
+The result JSON has a `results` array (one entry per input item, with a `status` of
+`added`, `duplicate`, `would_add`, `not_found`, or `ambiguous`) and a `summary` with counts.
+Exit code is still `0` even if some entries were skipped as `not_found`/`ambiguous` — check
+`summary` rather than relying on the exit code to know whether everything landed, then
+resolve any `not_found`/`ambiguous` entries individually with `playlist add` (using a more
+precise `--artist` or `--track-uri`) if you want them added too.
+
 ## Rules for ambiguous or destructive operations
 
 - **Never silently guess** on an ambiguous match. If the CLI returns exit code `3`
   (ambiguous) or `2` (not found), that is the CLI declining to guess for you — narrow the
   query (`--artist`, exact name) or ask the user, rather than picking whichever candidate
   looks plausible without stating your reasoning.
+- **`--interactive` is for humans at a real terminal, not for you.** It prompts on stdin
+  when a match is ambiguous, but that prompt only ever engages in an interactive TTY without
+  `--json` — passing `--interactive` alongside `--json` (which you should always be doing)
+  is simply ignored and the command falls back to returning `candidates` with exit code `3`,
+  exactly as if the flag weren't there. So it's harmless to leave off, and pointless to add,
+  in anything you invoke yourself.
 - **Inspect before you mutate.** Before adding tracks in bulk or deduplicating, run
   `playlist show` (or rely on `playlist add`'s built-in duplicate check) so you know what's
   already there. `playlist add` and `playlist add-album` already skip tracks already

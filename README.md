@@ -34,9 +34,10 @@ preference.
 | `spotify playlist list` | List your playlists |
 | `spotify playlist show "<name>"` | Show a playlist's tracks |
 | `spotify playlist create "<name>" [--public/--private] [--description ...]` | Create a playlist |
-| `spotify playlist add "<track>" "<playlist>" [--artist ...] [--dry-run]` | Add a track, skipping duplicates |
+| `spotify playlist add "<track>" "<playlist>" [--artist ...] [--interactive] [--dry-run]` | Add a track, skipping duplicates |
 | `spotify playlist remove "<track>" "<playlist>" [--artist ...] [--dry-run]` | Remove a track |
-| `spotify playlist add-album "<album>" "<playlist>" [--artist ...] [--dry-run]` | Add every track of an album |
+| `spotify playlist add-album "<album>" "<playlist>" [--artist ...] [--interactive] [--dry-run]` | Add every track of an album |
+| `spotify playlist import "<playlist>" <file> [--interactive] [--stop-on-error] [--dry-run]` | Bulk-add tracks listed in a file |
 | `spotify playlist dedupe "<playlist>" [--dry-run]` | Remove duplicate tracks |
 | `spotify library add "<track>"` / `spotify liked add "<track>"` | Save a track to Liked Songs |
 | `spotify library remove "<track>"` / `spotify liked remove "<track>"` | Remove a track from Liked Songs |
@@ -47,6 +48,46 @@ preference.
 Every command accepts a global `--json` flag (put it right after `spotify`, e.g.
 `spotify --json playlist show "Driving"`) for machine-readable output. See
 [AGENTS.md](AGENTS.md) for the exact JSON contract and exit codes.
+
+### Bulk-adding a list of tracks: `spotify playlist import`
+
+```bash
+spotify playlist import "Driving" songs.txt
+```
+
+`songs.txt` is a plain-text file, one track per line:
+
+```
+# lines starting with # are comments
+Black Hole Sun | Soundgarden
+Would?
+spotify:track:4iV5W9uYEdYUVa79Axb7Rh
+```
+
+- `Title | Artist` disambiguates the search; a bare title is fine too.
+- A line that's already a `spotify:track:...` URI or an `open.spotify.com/track/...` URL is
+  used directly, no search needed.
+- A `.json` file (or `-` for stdin, if the piped content starts with `[`) works too — a
+  top-level array of strings or of `{"track": "...", "artist": "..."}` / `{"uri": "..."}`
+  objects. This is the friendlier format for another program or an AI agent to generate.
+- Tracks already in the destination playlist are skipped automatically (matches `playlist
+  add`'s duplicate handling). Tracks that can't be confidently matched are skipped and
+  reported at the end, rather than aborting the whole import — add `--stop-on-error` to
+  abort on the first one instead, or `--interactive` to be prompted for those (and for
+  `playlist add`, or `playlist add-album`) instead of skipping them.
+- `--dry-run` previews the whole batch — what would be added, skipped as a duplicate, or
+  left unresolved — without changing anything.
+
+### Choosing ambiguous matches interactively: `--interactive` / `-i`
+
+`playlist add`, `playlist add-album`, `playlist import`, `library add`/`liked add`, and
+`queue` all accept `--interactive` (or `-i`). Normally, an ambiguous track/album/playlist
+match makes the command fail with candidates listed (exit code `3`) rather than guess. With
+`--interactive`, you're shown a numbered table of candidates and prompted to pick one (or
+`0` to cancel) instead. This only ever engages in a real terminal without `--json` — passed
+anywhere else (a script, a pipe, alongside `--json`), it's ignored and the command falls
+back to the normal non-interactive ambiguous-match behavior, so it's always safe to leave on
+without risk of a script hanging waiting for input.
 
 ### Known limitation: no "find similar songs" primitive
 
@@ -192,6 +233,8 @@ spotify playlist add "Black Hole Sun" "Driving" --artist Soundgarden
 spotify playlist add --dry-run "Would?" "Grunge"
 spotify playlist remove "Black Hole Sun" "Driving"
 spotify playlist add-album "Dirt" "Grunge" --artist "Alice in Chains"
+spotify playlist import "Driving" songs.txt --dry-run
+spotify playlist import "Driving" songs.txt --interactive
 spotify playlist dedupe "Driving" --dry-run
 spotify liked add "Would?"
 spotify queue "Them Bones" --artist "Alice in Chains"
@@ -234,8 +277,11 @@ src/spotify_cli/
 ├── config.py          # XDG config loading (SPOTIFY_CLIENT_ID, redirect URI, ...)
 ├── auth.py            # OAuth PKCE flow, local callback server, token storage/refresh
 ├── api_client.py       # async Spotify Web API client (retries, pagination, 429/401 handling)
-├── matching.py         # track/playlist disambiguation, dedupe planning (pure, unit-tested)
+├── matching.py         # scoring/auto-select logic, dedupe planning (pure, unit-tested)
+├── resolution.py        # turns a name/query into a Track/album/Playlist via search + matching.py,
+│                        # including the --interactive disambiguation prompt
+├── track_list.py         # parses `playlist import` files (plain text / JSON; pure, unit-tested)
 ├── models.py           # Track / Playlist / Device dataclasses
-├── output.py           # human vs --json rendering, tables
+├── output.py           # human vs --json rendering, tables, interactive candidate prompt
 └── commands/           # one module per command group (auth, search, playlist, library, queue)
 ```
