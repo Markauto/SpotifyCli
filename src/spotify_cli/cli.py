@@ -9,6 +9,7 @@ from .commands.library import library_app
 from .commands.playlist import playlist_app, playlist_list
 from .commands.queue import list_devices, now_playing, queue_track
 from .commands.search import search_app
+from .commands.skill import install_skill
 from .output import AppContext
 
 app = typer.Typer(
@@ -43,6 +44,7 @@ app.command("playlists", help="Alias for 'playlist list'.")(playlist_list)
 app.command("queue", help="Add a track to the playback queue.")(queue_track)
 app.command("devices", help="List available playback devices.")(list_devices)
 app.command("now", help="Show what's currently playing.")(now_playing)
+app.command("install-skill", help="Install the queue-song Claude Code skill globally for this user.")(install_skill)
 
 
 if __name__ == "__main__":
