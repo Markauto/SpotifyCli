@@ -74,7 +74,7 @@ spotify queue "<track>" [--artist "..."] [--track-uri URI] [--device-id ID]
 spotify devices
 spotify now                           # what's currently playing/paused
 
-spotify install-skill [--force]       # install the bundled Claude Code skills to ~/.claude/skills
+spotify install-skill [--force]       # install the bundled skills to ~/.claude/skills and ~/.agents/skills
 ```
 
 Always quote track, artist, album, and playlist names — they routinely contain spaces

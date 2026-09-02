@@ -158,10 +158,10 @@ pip install -e .
 
 To upgrade after pulling changes: `uv tool install --editable . --force` (or `pip install -e .` again).
 
-### Optional: install the Claude Code skills globally
+### Optional: install the agent skills globally
 
-If you use [Claude Code](https://claude.com/claude-code), this repo ships two skills that
-let Claude drive this CLI on your behalf:
+If you use [Claude Code](https://claude.com/claude-code) or [Codex CLI](https://developers.openai.com/codex/cli),
+this repo ships two skills that let the agent drive this CLI on your behalf:
 
 - **`queue-song`** — queue a track for playback (needs Premium and an active device).
 - **`make-playlist`** — create a playlist and fill it with tracks, choosing the songs
@@ -174,8 +174,9 @@ machine with:
 spotify install-skill
 ```
 
-This copies each skill to `~/.claude/skills/<name>/`. Pass `--force` to overwrite
-existing copies that are out of date.
+This copies each skill to `~/.claude/skills/<name>/` (Claude Code) and
+`~/.agents/skills/<name>/` (Codex CLI). Pass `--force` to overwrite existing copies
+that are out of date.
 
 ## Configure
 

@@ -44,7 +44,9 @@ app.command("playlists", help="Alias for 'playlist list'.")(playlist_list)
 app.command("queue", help="Add a track to the playback queue.")(queue_track)
 app.command("devices", help="List available playback devices.")(list_devices)
 app.command("now", help="Show what's currently playing.")(now_playing)
-app.command("install-skill", help="Install the bundled Claude Code skills globally for this user.")(install_skill)
+app.command("install-skill", help="Install the bundled Claude Code and Codex skills globally for this user.")(
+    install_skill
+)
 
 
 if __name__ == "__main__":
